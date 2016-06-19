@@ -39,9 +39,9 @@ class Net:
         self.showHex  = showHex
 
         # What was passed in - maybe a.b.c.d/m?
-        if re.search(r'/', self.orig) != None:
+        if re.search(r'/', self.orig):
             # Max of one slash, mkay?
-            if re.search(r'/.*/', self.orig) != None:
+            if re.search(r'/.*/', self.orig):
                 raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
             # Ok, looks good.
             else:
@@ -49,12 +49,12 @@ class Net:
                 self.mask       = Net(bits2quad(bits), showQuad, showBin, showDec, showHex)
                 self.raw        = socket.inet_aton(self.quad)
         
-        # Alright, not that - how about just a.b.c.d?
+        # Or maybe an int of some sort...
         elif re.search(r'\.', self.orig) == None:
-            # Ok, not a dotted quad; maybe a bare int?
+            # A decimal number?
             if re.search(r'\d', self.orig) != None and re.search(r'\D', self.orig) == None:
                 base = 10
-            # Last possibility - how about a hex string?
+            # How about a hex string?
             elif len(self.orig) <= 8 and re.search(r'(?i)[^0-9a-f]', self.orig) == None:
                 base = 16
             # Right.  No clue what we were given.  Bailing.
@@ -64,8 +64,9 @@ class Net:
             self.raw  = socket.inet_aton(str(int(self.orig, base)))
             self.quad = socket.inet_ntoa(self.raw)
 
+        # Alright, none of those - how about just a.b.c.d?
+        # inet_aton() throws an exception which should be caught by the caller.
         else:
-            print('got here somehow')
             self.raw = socket.inet_aton(self.orig)
             self.quad = socket.inet_ntoa(self.raw)
 
