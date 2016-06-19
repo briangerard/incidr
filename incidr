@@ -52,14 +52,17 @@ class Net:
         # Or maybe an int of some sort...
         elif re.search(r'\.', self.orig) == None:
             # A decimal number?
-            if re.search(r'\d', self.orig) != None and re.search(r'\D', self.orig) == None:
+            if (len(self.orig) <= 10
+                    and re.search(r'\d', self.orig) != None
+                    and re.search(r'\D', self.orig) == None):
                 base = 10
             # How about a hex string?
-            elif len(self.orig) <= 8 and re.search(r'(?i)[^0-9a-f]', self.orig) == None:
+            elif (len(self.orig) <= 8
+                    and re.search(r'(?i)[^0-9a-f]', self.orig) == None):
                 base = 16
             # Right.  No clue what we were given.  Bailing.
             else:
-                raise ValueError('Invalid CIDR block (bad chars): ' + self.orig)
+                raise ValueError('Invalid CIDR block (invalid numeric value): ' + self.orig)
 
             self.raw  = socket.inet_aton(str(int(self.orig, base)))
             self.quad = socket.inet_ntoa(self.raw)
