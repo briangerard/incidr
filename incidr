@@ -4,7 +4,7 @@
 Shows an IP or IPs, optionally masked, in various formats.
 
 Example:
-$ bincidr 1.2.3.4/24
+$ incidr 1.2.3.4/24
 1.2.3.4/24 :
 ==========
       1.  2.  3.  4  <=>  00000001 00000010 00000011 00000100  <=>  01020304  <=>  0016909060
