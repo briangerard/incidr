@@ -1,0 +1,192 @@
+#!/usr/bin/env python
+
+'''
+Shows an IP and mask in dotted-quad and binary.
+
+Example:
+$ bincidr 1.2.3.4/24
+1.2.3.4/24 :
+==========
+      1.  2.  3.  4  <=>  00000001 00000010 00000011 00000100  <=>  01020304  <=>  0016909060
+ &  255.255.255.  0  <=>  11111111 11111111 11111111 00000000  <=>  ffffff00  <=>  4294967040
+ =    1.  2.  3.  0  <=>  00000001 00000010 00000011 00000000  <=>  01020300  <=>  0016909056
+
+
+'''
+
+import argparse
+import re
+import socket
+
+class Net:
+    '''
+    A Net is just an IP address (only v4 right now), potentially with a netmask
+    applied.
+    '''
+
+    def __init__(self, net, showQuad=True, showBin=True, showDec=True, showHex=True):
+        '''
+        Instantiate a Net, depending on what was passed in.
+        '''
+        self.orig   = net
+        self.quad   = None
+        self.mask   = None
+        self.masked = None
+        self.raw    = None
+
+        self.showQuad = showQuad
+        self.showBin  = showBin
+        self.showDec  = showDec
+        self.showHex  = showHex
+
+        # maybe a.b.c.d/m?
+        if re.search(r'/', self.orig) != None:
+            if re.search(r'/.*/', self.orig) != None:
+                raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
+            # yep, looks that way...
+            else:
+                self.quad, bits = self.orig.split('/')
+                self.mask       = Net(bits2quad(bits), showQuad, showBin, showDec, showHex)
+                self.raw        = socket.inet_aton(self.quad)
+        
+        # how about just a.b.c.d?
+        elif re.search(r'\.', self.orig) == None:
+            # ok, not a dotted quad; maybe an int?
+            if re.search(r'\d', self.orig) != None and re.search(r'\D', self.orig) == None:
+                base = 10
+            # how about a hex string?
+            elif len(self.orig) <= 8 and re.search(r'(?i)[^0-9a-f]', self.orig) == None:
+                base = 16
+            else:
+                raise ValueError('Invalid CIDR block (bad chars): ' + self.orig)
+
+            self.raw  = socket.inet_aton(str(int(self.orig, base)))
+            self.quad = socket.inet_ntoa(self.raw)
+
+        else:
+            self.raw = socket.inet_aton(self.orig)
+            self.quad = socket.inet_ntoa(self.raw)
+
+        self.as_dec = '{:010d}'.format(int(sum(256**(3-x)*self.raw[x] for x in range(4))))
+        self.as_hex = '{:08x}'.format(int(self.as_dec))
+        self.as_bin = ' '.join('{:08b}'.format(int(o)) for o in self.quad.split('.'))
+
+        if self.mask != None:
+            self.masked     = self & self.mask
+
+    def __and__(self, other):
+        '''
+        Overloading '&' to apply a netmask.
+        '''
+        newnet = bytearray(socket.inet_aton('0.0.0.0'))
+
+        for o in range(4):
+            newnet[o] = self.raw[o] & other.raw[o]
+
+        return Net(socket.inet_ntoa(bytes(newnet)), self.showQuad, self.showBin, self.showDec, self.showHex)
+
+    def __str__(self):
+        '''
+        Return the translation of the IP (or netblock) as its various formats.
+        '''
+        theStr = '  '
+        
+        if self.showQuad:
+            theStr += '.'.join('{:>3}'.format(o) for o in self.quad.split('.'))
+        if self.showBin:
+            if re.search(r'\S', theStr):
+                theStr += '  <=>  '
+            theStr += self.as_bin
+        if self.showHex:
+            if re.search(r'\S', theStr):
+                theStr += '  <=>  '
+            theStr += self.as_hex
+        if self.showDec:
+            if re.search(r'\S', theStr):
+                theStr += '  <=>  '
+            theStr += self.as_dec
+
+        if self.mask:
+            theStr = '  ' + theStr
+            theStr += '\n' + ' &' + str(self.mask)
+        if self.masked:
+            theStr += '\n' + ' =' + str(self.masked)
+
+        return theStr
+
+def bits2quad(mask):
+    """
+    Change, for example, 24 into 255.255.255.0
+    NOTE: Currently only v4; will need update for v6.
+    """
+    mask = int(mask)
+    octets = []
+    for o in range(4):
+        if mask >= 8:
+            octets.extend(['255'])
+            mask -= 8
+        elif mask > 0:
+            octets.extend([str(int('1'*mask+'0'*(8-mask),2))])
+            mask = 0
+        else:
+            octets.extend(['0'])
+    return '.'.join(octets)
+
+
+argparser = argparse.ArgumentParser(
+                        description="Display v4 IPs and/or CIDR blocks in dotted-quad, binary, hex, and decimal.",
+                        epilog='''You can specify any combination of the --quad, --binary, --decimal, and --hexadecimal
+                        options together to get multiple formats.  The default is to show all of them.''')
+argparser.add_argument('addresses',
+                        nargs='+',
+                        help='List of IPs or CIDR blocks to process.')
+argparser.add_argument('--mask',
+                        action='append',
+                        help='The mask to apply the addresses.')
+argparser.add_argument('--quad',
+                        action='store_true',
+                        help='Only display the addresses as dotted quads.')
+argparser.add_argument('--binary',
+                        action='store_true',
+                        help='Only display the addresses as binary.')
+argparser.add_argument('--decimal',
+                        action='store_true',
+                        help='Only display the addresses as base-10 ints.')
+argparser.add_argument('--hexadecimal',
+                        action='store_true',
+                        help='Only display the addresses as hexadecimal ints.')
+args = argparser.parse_args()
+
+formats = []
+if args.quad or args.binary or args.decimal or args.hexadecimal:
+    formats = [ args.quad, args.binary, args.decimal, args.hexadecimal ]
+
+for cidr in args.addresses:
+    cidrs = []
+
+    if re.search(r'/', cidr) == None and args.mask:
+        for mask in args.mask:
+            cidrs.append(cidr + '/' + mask)
+    else:
+        cidrs.append(cidr)
+
+    for net in cidrs:
+        print(net + " :")
+        print('=' * len(net))
+
+        try:
+            thisNet = Net(net, *formats)
+        except ValueError as v:
+            print('Error: ' + str(v))
+            print('Skipping')
+            print('')
+            continue
+        except OSError as o:
+            print('Error: ' + str(o))
+            print('Skipping')
+            print('')
+            continue
+
+        print(thisNet)
+        print('')
+
