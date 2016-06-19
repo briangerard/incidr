@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-Shows an IP and mask in dotted-quad and binary.
+Shows an IP or IPs, optionally masked, in various formats.
 
 Example:
 $ bincidr 1.2.3.4/24
@@ -10,8 +10,6 @@ $ bincidr 1.2.3.4/24
       1.  2.  3.  4  <=>  00000001 00000010 00000011 00000100  <=>  01020304  <=>  0016909060
  &  255.255.255.  0  <=>  11111111 11111111 11111111 00000000  <=>  ffffff00  <=>  4294967040
  =    1.  2.  3.  0  <=>  00000001 00000010 00000011 00000000  <=>  01020300  <=>  0016909056
-
-
 '''
 
 import argparse
@@ -34,29 +32,32 @@ class Net:
         self.masked = None
         self.raw    = None
 
+        # Specify how this Net is to be displayed.
         self.showQuad = showQuad
         self.showBin  = showBin
         self.showDec  = showDec
         self.showHex  = showHex
 
-        # maybe a.b.c.d/m?
+        # What was passed in - maybe a.b.c.d/m?
         if re.search(r'/', self.orig) != None:
+            # Max of one slash, mkay?
             if re.search(r'/.*/', self.orig) != None:
                 raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
-            # yep, looks that way...
+            # Ok, looks good.
             else:
                 self.quad, bits = self.orig.split('/')
                 self.mask       = Net(bits2quad(bits), showQuad, showBin, showDec, showHex)
                 self.raw        = socket.inet_aton(self.quad)
         
-        # how about just a.b.c.d?
+        # Alright, not that - how about just a.b.c.d?
         elif re.search(r'\.', self.orig) == None:
-            # ok, not a dotted quad; maybe an int?
+            # Ok, not a dotted quad; maybe a bare int?
             if re.search(r'\d', self.orig) != None and re.search(r'\D', self.orig) == None:
                 base = 10
-            # how about a hex string?
+            # Last possibility - how about a hex string?
             elif len(self.orig) <= 8 and re.search(r'(?i)[^0-9a-f]', self.orig) == None:
                 base = 16
+            # Right.  No clue what we were given.  Bailing.
             else:
                 raise ValueError('Invalid CIDR block (bad chars): ' + self.orig)
 
@@ -64,30 +65,37 @@ class Net:
             self.quad = socket.inet_ntoa(self.raw)
 
         else:
+            print('got here somehow')
             self.raw = socket.inet_aton(self.orig)
             self.quad = socket.inet_ntoa(self.raw)
 
+        # Now to populate the various representations of the Net.  Not bothering
+        # to check which format was requested - the translations just aren't that
+        # expensive.
         self.as_dec = '{:010d}'.format(int(sum(256**(3-x)*self.raw[x] for x in range(4))))
         self.as_hex = '{:08x}'.format(int(self.as_dec))
         self.as_bin = ' '.join('{:08b}'.format(int(o)) for o in self.quad.split('.'))
 
-        if self.mask != None:
+        if self.mask:
             self.masked     = self & self.mask
 
     def __and__(self, other):
         '''
-        Overloading '&' to apply a netmask.
+        Overloading '&' to apply a netmask.  That's really what's going on
+        anyway, and it just makes sense.
         '''
         newnet = bytearray(socket.inet_aton('0.0.0.0'))
 
         for o in range(4):
             newnet[o] = self.raw[o] & other.raw[o]
 
+        # Inheriting the display formats from self.
         return Net(socket.inet_ntoa(bytes(newnet)), self.showQuad, self.showBin, self.showDec, self.showHex)
 
     def __str__(self):
         '''
-        Return the translation of the IP (or netblock) as its various formats.
+        Return the translation of the IP (or netblock) as its various alternate formats,
+        based on what the user requested.
         '''
         theStr = '  '
         
@@ -119,6 +127,13 @@ def bits2quad(mask):
     Change, for example, 24 into 255.255.255.0
     NOTE: Currently only v4; will need update for v6.
     """
+    # TODO: Handle out-of-range masks a bit more explicitly.
+    #       currently mask < 0 results in 0.0.0.0 and
+    #       mask > 32 results in 255.255.255.255.  Not a
+    #       terrible way to go, but we should probably throw
+    #       at least a warning for a bad netmask.
+    # TODO: Handle invalid masks (as in, utterly screwy
+    #       masks, like 'bob').
     mask = int(mask)
     octets = []
     for o in range(4):
@@ -162,11 +177,15 @@ if args.quad or args.binary or args.decimal or args.hexadecimal:
     formats = [ args.quad, args.binary, args.decimal, args.hexadecimal ]
 
 for cidr in args.addresses:
+    # Making this a list in case the user specifies multiple --mask's
     cidrs = []
 
+    # If the user specifies --mask m and a bare address,
+    # change the constructor arg to 'a.b.c.c/m'.
     if re.search(r'/', cidr) == None and args.mask:
         for mask in args.mask:
             cidrs.append(cidr + '/' + mask)
+    # Otherwise, just pass on what we got.
     else:
         cidrs.append(cidr)
 
@@ -189,4 +208,3 @@ for cidr in args.addresses:
 
         print(thisNet)
         print('')
-
