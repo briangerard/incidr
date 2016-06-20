@@ -15,6 +15,7 @@ $ incidr 1.2.3.4/24
 import argparse
 import re
 import socket
+import struct
 
 class Net:
     '''
@@ -77,7 +78,10 @@ class Net:
         # Now to populate the various representations of the Net.  Not bothering
         # to check which format was requested - the translations just aren't that
         # expensive.
-        self.as_dec = '{:010d}'.format(int(sum(256**(3-x)*self.raw[x] for x in range(4))))
+        #
+        # NOTE: The reason for the struct.unpack call is to allow this to work in
+        # both python2.x and python3.x
+        self.as_dec = '{:010d}'.format(int(sum(256**(3-x)*struct.unpack('B', self.raw[x:x+1])[0] for x in range(4))))
         self.as_hex = '{:08x}'.format(int(self.as_dec))
         self.as_bin = ' '.join('{:08b}'.format(int(o)) for o in self.quad.split('.'))
 
@@ -91,8 +95,9 @@ class Net:
         '''
         newnet = bytearray(socket.inet_aton('0.0.0.0'))
 
+        # NOTE: Using struct.unpack so this works in both python2.x and python 3.x
         for o in range(4):
-            newnet[o] = self.raw[o] & other.raw[o]
+            newnet[o] = struct.unpack('B', self.raw[o:o+1])[0] & struct.unpack('B', other.raw[o:o+1])[0]
 
         # Inheriting the display formats from self.
         return Net(socket.inet_ntoa(bytes(newnet)), self.showQuad, self.showBin, self.showDec, self.showHex)
