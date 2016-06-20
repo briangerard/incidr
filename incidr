@@ -68,7 +68,8 @@ class Net:
             self.quad = socket.inet_ntoa(self.raw)
 
         # Alright, none of those - how about just a.b.c.d?
-        # inet_aton() throws an exception which should be caught by the caller.
+        # inet_aton() throws an OSError on bad input, which should be caught by
+        # the caller.
         else:
             self.raw = socket.inet_aton(self.orig)
             self.quad = socket.inet_ntoa(self.raw)
