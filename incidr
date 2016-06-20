@@ -40,9 +40,9 @@ class Net:
         self.showHex  = showHex
 
         # What was passed in - maybe a.b.c.d/m?
-        if re.search(r'/', self.orig):
+        if '/' in self.orig:
             # Max of one slash, mkay?
-            if re.search(r'/.*/', self.orig):
+            if self.orig.count('/') > 1:
                 raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
             # Ok, looks good.
             else:
@@ -51,7 +51,7 @@ class Net:
                 self.raw        = socket.inet_aton(self.quad)
         
         # Or maybe an int of some sort...
-        elif re.search(r'\.', self.orig) == None:
+        elif '.' not in self.orig:
             # A decimal number?
             if (len(self.orig) <= 10
                     and re.search(r'\d', self.orig) != None
@@ -192,7 +192,7 @@ for cidr in args.addresses:
 
     # If the user specifies --mask m and a bare address,
     # change the constructor arg to 'a.b.c.c/m'.
-    if re.search(r'/', cidr) == None and args.mask:
+    if '/' not in cidr and args.mask:
         for mask in args.mask:
             cidrs.append(cidr + '/' + mask)
     # Otherwise, just pass on what we got.
