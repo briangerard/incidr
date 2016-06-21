@@ -40,6 +40,9 @@ class Net:
         self.formats['dec']  = { 'as string': None, 'show': show_dec }
         self.formats['hex']  = { 'as string': None, 'show': show_hex }
 
+        base_address = None
+        netmask      = None
+
         # What was passed in - maybe a.b.c.d/m?
         if '/' in self.orig:
             # Max of one slash, mkay?
@@ -47,9 +50,9 @@ class Net:
                 raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
             # Ok, looks good.
             else:
-                self.formats['quad']['as string'], bits = self.orig.split('/')
-                self.mask = Net(bits2quad(bits), show_quad, show_bin, show_dec, show_hex)
-                self.raw  = socket.inet_aton(self.formats['quad']['as string'])
+                # TODO: Handle dotted-quad netmasks
+                base_address, netmask = self.orig.split('/')
+                self.mask = Net(bits2int(netmask), show_quad, show_bin, show_dec, show_hex)
         
         # Or maybe an int of some sort...
         elif '.' not in self.orig:
@@ -57,39 +60,35 @@ class Net:
             if (len(self.orig) <= 10
                     and re.search(r'\d', self.orig) != None
                     and re.search(r'\D', self.orig) == None):
-                base = 10
+                base_address = self.orig
             # How about a hex string?
             elif (len(self.orig) <= 8
                     and re.search(r'(?i)[^0-9a-f]', self.orig) == None):
-                base = 16
+                base_address = '0x' + self.orig
             # Right.  No clue what we were given.  Bailing.
             else:
                 raise ValueError('Invalid CIDR block (invalid numeric value): ' + self.orig)
 
-            self.raw  = socket.inet_aton(str(int(self.orig, base)))
-            self.formats['quad']['as string'] = socket.inet_ntoa(self.raw)
-
-        # Alright, none of those - how about just a.b.c.d?
-        # inet_aton() throws an OSError on bad input, which should be caught by
-        # the caller.
+        # Alright, none of those - how about just plain a.b.c.d?
         else:
-            self.raw = socket.inet_aton(self.orig)
-            self.formats['quad']['as string'] = socket.inet_ntoa(self.raw)
+            base_address = self.orig
 
         # Now to populate the various representations of the Net.  Not bothering
         # to check which format was requested - the translations just aren't that
         # expensive.
         #
         # NOTE: The reason for the struct.unpack call is to allow this to work in
-        # both python2.x and python3.x
+        #       both python2.x and python3.x
+        # NOTE: inet_aton() throws an OSError on bad input, which should be caught
+        #       by the caller.
+        self.raw                          = socket.inet_aton(base_address)
         self.formats['quad']['as string'] = '.'.join('{:>3}'.format(o)
-                                                for o in self.formats['quad']['as string'].split('.'))
+                                                for o in socket.inet_ntoa(self.raw).split('.'))
         self.formats['dec']['as string']  = '{:010d}'.format(int(sum(256**(3-x)*struct.unpack('B', self.raw[x:x+1])[0]
                                                 for x in range(4))))
         self.formats['hex']['as string']  = '{:08x}'.format(int(self.formats['dec']['as string']))
         self.formats['bin']['as string']  = ' '.join('{:08b}'.format(int(o))
                                                 for o in self.formats['quad']['as string'].split('.'))
-
         if self.mask:
             self.masked     = self & self.mask
 
@@ -127,30 +126,21 @@ class Net:
 
         return the_string
 
-def bits2quad(mask):
+def bits2int(mask):
     """
-    Change, for example, 24 into 255.255.255.0
+    Change, for example, 24 or '24' into '4294967040'.   It returns
+    the stringified version of the integer, in other words.
     NOTE: Currently only v4; will need update for v6.
     """
-    # TODO: Handle out-of-range masks a bit more explicitly.
-    #       currently mask < 0 results in 0.0.0.0 and
-    #       mask > 32 results in 255.255.255.255.  Not a
-    #       terrible way to go, but we should probably throw
-    #       at least a warning for a bad netmask.
-    # TODO: Handle invalid masks (as in, utterly screwy
-    #       masks, like 'bob').
-    mask = int(mask)
-    octets = []
-    for o in range(4):
-        if mask >= 8:
-            octets.extend(['255'])
-            mask -= 8
-        elif mask > 0:
-            octets.extend([str(int('1'*mask+'0'*(8-mask),2))])
-            mask = 0
+    try:
+        mask = int(mask)
+    except:
+        raise ValueError('Invalid netmask, non-numeric: ' + mask)
+    else:
+        if 1 <= mask <= 32:
+            return str(int("1"*int(mask)+"0"*(32-int(mask)),2))
         else:
-            octets.extend(['0'])
-    return '.'.join(octets)
+            raise ValueError('Invalid netmask, outside of 1 <= m <= 32 range: ' + str(mask))
 
 
 argparser = argparse.ArgumentParser(
