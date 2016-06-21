@@ -22,22 +22,23 @@ class Net:
     A Net is just an IP address (only v4 right now), potentially with a netmask
     applied.
     '''
+    all_formats = [ 'quad', 'bin', 'dec', 'hex' ]
 
-    def __init__(self, net, showQuad=True, showBin=True, showDec=True, showHex=True):
+    def __init__(self, net, show_quad=True, show_bin=True, show_dec=True, show_hex=True):
         '''
         Instantiate a Net, depending on what was passed in.
         '''
         self.orig   = net
-        self.quad   = None
         self.mask   = None
         self.masked = None
         self.raw    = None
 
         # Specify how this Net is to be displayed.
-        self.showQuad = showQuad
-        self.showBin  = showBin
-        self.showDec  = showDec
-        self.showHex  = showHex
+        self.formats = {}
+        self.formats['quad'] = { 'as string': None, 'show': show_quad }
+        self.formats['bin']  = { 'as string': None, 'show': show_bin }
+        self.formats['dec']  = { 'as string': None, 'show': show_dec }
+        self.formats['hex']  = { 'as string': None, 'show': show_hex }
 
         # What was passed in - maybe a.b.c.d/m?
         if '/' in self.orig:
@@ -46,9 +47,9 @@ class Net:
                 raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
             # Ok, looks good.
             else:
-                self.quad, bits = self.orig.split('/')
-                self.mask       = Net(bits2quad(bits), showQuad, showBin, showDec, showHex)
-                self.raw        = socket.inet_aton(self.quad)
+                self.formats['quad']['as string'], bits = self.orig.split('/')
+                self.mask = Net(bits2quad(bits), show_quad, show_bin, show_dec, show_hex)
+                self.raw  = socket.inet_aton(self.formats['quad']['as string'])
         
         # Or maybe an int of some sort...
         elif '.' not in self.orig:
@@ -66,14 +67,14 @@ class Net:
                 raise ValueError('Invalid CIDR block (invalid numeric value): ' + self.orig)
 
             self.raw  = socket.inet_aton(str(int(self.orig, base)))
-            self.quad = socket.inet_ntoa(self.raw)
+            self.formats['quad']['as string'] = socket.inet_ntoa(self.raw)
 
         # Alright, none of those - how about just a.b.c.d?
         # inet_aton() throws an OSError on bad input, which should be caught by
         # the caller.
         else:
             self.raw = socket.inet_aton(self.orig)
-            self.quad = socket.inet_ntoa(self.raw)
+            self.formats['quad']['as string'] = socket.inet_ntoa(self.raw)
 
         # Now to populate the various representations of the Net.  Not bothering
         # to check which format was requested - the translations just aren't that
@@ -81,9 +82,13 @@ class Net:
         #
         # NOTE: The reason for the struct.unpack call is to allow this to work in
         # both python2.x and python3.x
-        self.as_dec = '{:010d}'.format(int(sum(256**(3-x)*struct.unpack('B', self.raw[x:x+1])[0] for x in range(4))))
-        self.as_hex = '{:08x}'.format(int(self.as_dec))
-        self.as_bin = ' '.join('{:08b}'.format(int(o)) for o in self.quad.split('.'))
+        self.formats['quad']['as string'] = '.'.join('{:>3}'.format(o)
+                                                for o in self.formats['quad']['as string'].split('.'))
+        self.formats['dec']['as string']  = '{:010d}'.format(int(sum(256**(3-x)*struct.unpack('B', self.raw[x:x+1])[0]
+                                                for x in range(4))))
+        self.formats['hex']['as string']  = '{:08x}'.format(int(self.formats['dec']['as string']))
+        self.formats['bin']['as string']  = ' '.join('{:08b}'.format(int(o))
+                                                for o in self.formats['quad']['as string'].split('.'))
 
         if self.mask:
             self.masked     = self & self.mask
@@ -100,37 +105,27 @@ class Net:
             newnet[o] = struct.unpack('B', self.raw[o:o+1])[0] & struct.unpack('B', other.raw[o:o+1])[0]
 
         # Inheriting the display formats from self.
-        return Net(socket.inet_ntoa(bytes(newnet)), self.showQuad, self.showBin, self.showDec, self.showHex)
+        return Net(socket.inet_ntoa(bytes(newnet)),
+                *(self.formats[fmt]['show'] for fmt in self.all_formats))
 
     def __str__(self):
         '''
         Return the translation of the IP (or netblock) as its various alternate formats,
         based on what the user requested.
         '''
-        theStr = '  '
+        the_string = '  '
         
-        if self.showQuad:
-            theStr += '.'.join('{:>3}'.format(o) for o in self.quad.split('.'))
-        if self.showBin:
-            if re.search(r'\S', theStr):
-                theStr += '  <=>  '
-            theStr += self.as_bin
-        if self.showHex:
-            if re.search(r'\S', theStr):
-                theStr += '  <=>  '
-            theStr += self.as_hex
-        if self.showDec:
-            if re.search(r'\S', theStr):
-                theStr += '  <=>  '
-            theStr += self.as_dec
+        the_string = '  <=>  '.join(self.formats[fmt]['as string']
+                                for fmt in self.all_formats
+                                if self.formats[fmt]['show'])
 
         if self.mask:
-            theStr = '  ' + theStr
-            theStr += '\n' + ' &' + str(self.mask)
+            the_string  =   '   ' + the_string
+            the_string += '\n & ' + str(self.mask)
         if self.masked:
-            theStr += '\n' + ' =' + str(self.masked)
+            the_string += '\n = ' + str(self.masked)
 
-        return theStr
+        return the_string
 
 def bits2quad(mask):
     """
@@ -204,7 +199,7 @@ for cidr in args.addresses:
         print('=' * len(net))
 
         try:
-            thisNet = Net(net, *formats)
+            this_net = Net(net, *formats)
         except ValueError as v:
             print('Error: ' + str(v))
             print('Skipping')
@@ -216,5 +211,5 @@ for cidr in args.addresses:
             print('')
             continue
 
-        print(thisNet)
+        print(this_net)
         print('')
