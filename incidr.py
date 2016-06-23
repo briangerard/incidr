@@ -12,7 +12,6 @@ $ incidr 1.2.3.4/24
  =    1.  2.  3.  0  <=>  00000001 00000010 00000011 00000000  <=>  01020300  <=>  0016909056
 '''
 
-import argparse
 import re
 import socket
 import struct
@@ -143,63 +142,72 @@ def bits2int(mask):
             raise ValueError('Invalid netmask, outside of 1 <= m <= 32 range: ' + str(mask))
 
 
-argparser = argparse.ArgumentParser(
-                        description="Display v4 IPs and/or CIDR blocks in dotted-quad, binary, hex, and decimal.",
-                        epilog='''You can specify any combination of the --quad, --binary, --decimal, and --hexadecimal
-                        options together to get multiple formats.  The default is to show all of them.''')
-argparser.add_argument('addresses',
-                        nargs='+',
-                        help='List of IPs or CIDR blocks to process.')
-argparser.add_argument('--mask',
-                        action='append',
-                        help='The mask to apply the addresses.')
-argparser.add_argument('--quad',
-                        action='store_true',
-                        help='Only display the addresses as dotted quads.')
-argparser.add_argument('--binary',
-                        action='store_true',
-                        help='Only display the addresses as binary.')
-argparser.add_argument('--decimal',
-                        action='store_true',
-                        help='Only display the addresses as base-10 ints.')
-argparser.add_argument('--hexadecimal',
-                        action='store_true',
-                        help='Only display the addresses as hexadecimal ints.')
-args = argparser.parse_args()
+if __name__ == "__main__":
 
-formats = []
-if args.quad or args.binary or args.decimal or args.hexadecimal:
-    formats = [ args.quad, args.binary, args.decimal, args.hexadecimal ]
+    import argparse
 
-for cidr in args.addresses:
-    # Making this a list in case the user specifies multiple --mask's
-    cidrs = []
+    argparser = argparse.ArgumentParser(
+                            description="Display v4 IPs and/or CIDR blocks in dotted-quad, binary, hex, and decimal.",
+                            epilog='''You can specify any combination of the --quad, --binary, --decimal, and --hexadecimal
+                            options together to get multiple formats.  The default is to show all of them.''')
+    argparser.add_argument('addresses',
+                            nargs='+',
+                            help='List of IPs or CIDR blocks to process.')
+    argparser.add_argument('--mask',
+                            action='append',
+                            help='The mask to apply the addresses.')
+    argparser.add_argument('--quad',
+                            action='store_true',
+                            help='Only display the addresses as dotted quads.')
+    argparser.add_argument('--binary',
+                            action='store_true',
+                            help='Only display the addresses as binary.')
+    argparser.add_argument('--decimal',
+                            action='store_true',
+                            help='Only display the addresses as base-10 ints.')
+    argparser.add_argument('--hexadecimal',
+                            action='store_true',
+                            help='Only display the addresses as hexadecimal ints.')
+    args = argparser.parse_args()
 
-    # If the user specifies --mask m and a bare address,
-    # change the constructor arg to 'a.b.c.c/m'.
-    if '/' not in cidr and args.mask:
-        for mask in args.mask:
-            cidrs.append(cidr + '/' + mask)
-    # Otherwise, just pass on what we got.
-    else:
-        cidrs.append(cidr)
+    formats = []
+    if args.quad or args.binary or args.decimal or args.hexadecimal:
+        formats = [ args.quad, args.binary, args.decimal, args.hexadecimal ]
 
-    for net in cidrs:
-        print(net + " :")
-        print('=' * len(net))
+    for cidr in args.addresses:
+        # Making this a list in case the user specifies multiple --mask's
+        cidrs = []
 
-        try:
-            this_net = Net(net, *formats)
-        except ValueError as v:
-            print('Error: ' + str(v))
-            print('Skipping')
+        # If the user specifies --mask m and a bare address,
+        # change the constructor arg to 'a.b.c.c/m'.
+        if '/' not in cidr and args.mask:
+            for mask in args.mask:
+                cidrs.append(cidr + '/' + mask)
+        # Otherwise, just pass on what we got.
+        else:
+            cidrs.append(cidr)
+
+        for net in cidrs:
+            print(net + " :")
+            print('=' * len(net))
+
+            try:
+                this_net = Net(net, *formats)
+            except ValueError as v:
+                print('Error: ' + str(v))
+                print('Skipping')
+                print('')
+                continue
+            except OSError as o:
+                print('Error: ' + str(o))
+                print('Skipping')
+                print('')
+                continue
+            except socket.error as se:
+                print('Error: ' + str(se))
+                print('Skipping')
+                print('')
+                continue
+
+            print(this_net)
             print('')
-            continue
-        except OSError as o:
-            print('Error: ' + str(o))
-            print('Skipping')
-            print('')
-            continue
-
-        print(this_net)
-        print('')
