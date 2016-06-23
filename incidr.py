@@ -193,18 +193,8 @@ if __name__ == "__main__":
 
             try:
                 this_net = Net(net, *formats)
-            except ValueError as v:
-                print('Error: ' + str(v))
-                print('Skipping')
-                print('')
-                continue
-            except OSError as o:
-                print('Error: ' + str(o))
-                print('Skipping')
-                print('')
-                continue
-            except socket.error as se:
-                print('Error: ' + str(se))
+            except (ValueError, OSError, socket.error) as e:
+                print('Error: ' + str(e))
                 print('Skipping')
                 print('')
                 continue
