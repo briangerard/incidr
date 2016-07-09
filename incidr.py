@@ -49,9 +49,8 @@ class Net:
                 raise ValueError('Invalid CIDR block (multiple "/"es): ' + self.orig)
             # Ok, looks good.
             else:
-                # TODO: Handle dotted-quad netmasks
                 base_address, netmask = self.orig.split('/')
-                self.mask = Net(bits2int(netmask), show_quad, show_bin, show_dec, show_hex)
+                self.mask = Net(netmask, show_quad, show_bin, show_dec, show_hex)
         
         # Or maybe an int of some sort...
         elif '.' not in self.orig:
@@ -59,7 +58,13 @@ class Net:
             if (len(self.orig) <= 10
                     and re.search(r'\d', self.orig) != None
                     and re.search(r'\D', self.orig) == None):
-                base_address = self.orig
+                # Special case - if self.orig is <= 32, we assume it was a
+                # mask in a cidr block (eg - /24) rather than a decimal value
+                # to be translated into an ip.
+                if int(self.orig) <= 32:
+                    base_address = bits2int(self.orig)
+                else:
+                    base_address = self.orig
             # How about a hex string?
             elif (len(self.orig) <= 8
                     and re.search(r'(?i)[^0-9a-f]', self.orig) == None):
@@ -137,7 +142,7 @@ def bits2int(mask):
         raise ValueError('Invalid netmask, non-numeric: ' + mask)
     else:
         if 1 <= mask <= 32:
-            return str(int("1"*int(mask)+"0"*(32-int(mask)),2))
+            return str(int("1"*mask+"0"*(32-mask),2))
         else:
             raise ValueError('Invalid netmask, outside of 1 <= m <= 32 range: ' + str(mask))
 
